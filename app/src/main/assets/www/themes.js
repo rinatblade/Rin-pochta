@@ -1,0 +1,61 @@
+// 20 тёмных + 20 светлых тем с градиентами.
+// [название, режим, [цвета градиента фона], акцент, (необязательно) второй акцент]
+window.THEMES = [
+  // ---- Тёмные ----
+  ['Полночь', 'dark', ['#0f0c29', '#302b63', '#24243e'], '#8b7bff', '#5ee7df'],
+  ['Океан', 'dark', ['#0f2027', '#203a43', '#2c5364'], '#4fd1c5', '#38bdf8'],
+  ['Фиолетовая ночь', 'dark', ['#1a0033', '#3d0066', '#12002b'], '#c77dff', '#ff7ad9'],
+  ['Уголь и золото', 'dark', ['#0d0d0d', '#1f1f1f', '#2b2412'], '#ffb703', '#ff7b00'],
+  ['Изумруд', 'dark', ['#02201a', '#0b4d3b', '#062d24'], '#34d399', '#22d3ee'],
+  ['Бордо', 'dark', ['#2b0a14', '#5b1a2e', '#3a0f1e'], '#fb7185', '#f59e0b'],
+  ['Космос', 'dark', ['#0b0b2b', '#1b1464', '#0a0a24'], '#7c83ff', '#c084fc'],
+  ['Тёмный лес', 'dark', ['#0b1f0f', '#1d3b22', '#102a15'], '#a3e635', '#4ade80'],
+  ['Тёмный закат', 'dark', ['#2d1b3d', '#6b2d5c', '#c0504d'], '#ff8a65', '#ffd166'],
+  ['Сталь', 'dark', ['#141e30', '#243b55', '#1a2a40'], '#60a5fa', '#34d399'],
+  ['Мокко', 'dark', ['#1e1410', '#3b2a20', '#2a1c15'], '#f5b97a', '#e07a5f'],
+  ['Неон', 'dark', ['#0a0a1a', '#1a0b2e', '#0d1b3a'], '#ff2bd6', '#00f0ff'],
+  ['Аврора', 'dark', ['#0b1a2b', '#124559', '#1b4332'], '#6ee7b7', '#a78bfa'],
+  ['Индиго', 'dark', ['#0d1137', '#2a1f78', '#151a4f'], '#a78bfa', '#60a5fa'],
+  ['Малахит', 'dark', ['#05241f', '#0f5e4d', '#083a30'], '#2dd4bf', '#a3e635'],
+  ['Медь', 'dark', ['#1c0f0a', '#4a2512', '#2b160c'], '#fb923c', '#fbbf24'],
+  ['Синий графит', 'dark', ['#11151c', '#1d2733', '#151c26'], '#38bdf8', '#818cf8'],
+  ['Вишня', 'dark', ['#240010', '#5a0f2d', '#33091c'], '#f43f5e', '#fb923c'],
+  ['Лаванда ночью', 'dark', ['#1b1530', '#3b2f63', '#251d44'], '#d8b4fe', '#f0abfc'],
+  ['Хвоя', 'dark', ['#07201c', '#13403a', '#0b2d27'], '#86efac', '#67e8f9'],
+
+  // ---- Светлые ----
+  ['Утро', 'light', ['#fdfbfb', '#ebedee', '#f4f1fb'], '#4f46e5', '#06b6d4'],
+  ['Небо', 'light', ['#e0f2fe', '#bae6fd', '#e0e7ff'], '#0284c7', '#6366f1'],
+  ['Мята', 'light', ['#ecfdf5', '#a7f3d0', '#d1fae5'], '#059669', '#0ea5e9'],
+  ['Персик', 'light', ['#fff1eb', '#ffd5c2', '#ffe8d6'], '#ea580c', '#e11d48'],
+  ['Лаванда', 'light', ['#f5f3ff', '#ddd6fe', '#ede9fe'], '#7c3aed', '#db2777'],
+  ['Роза', 'light', ['#fff1f2', '#fecdd3', '#ffe4e6'], '#e11d48', '#f97316'],
+  ['Лимон', 'light', ['#fefce8', '#fde68a', '#fef9c3'], '#ca8a04', '#ea580c'],
+  ['Лёд', 'light', ['#f0f9ff', '#e0e7ff', '#dbeafe'], '#3b82f6', '#8b5cf6'],
+  ['Сакура', 'light', ['#fff0f6', '#ffd6e8', '#ffe3ef'], '#db2777', '#9333ea'],
+  ['Песок', 'light', ['#faf5eb', '#efdcb8', '#f5e8cf'], '#b45309', '#dc2626'],
+  ['Аквамарин', 'light', ['#e6fffa', '#b2f5ea', '#ccfbf1'], '#0d9488', '#0284c7'],
+  ['Облако', 'light', ['#f8fafc', '#e2e8f0', '#f1f5f9'], '#475569', '#0ea5e9'],
+  ['Светлый закат', 'light', ['#fff7ed', '#fbcfe8', '#fed7aa'], '#f97316', '#db2777'],
+  ['Фисташка', 'light', ['#f7fee7', '#d9f99d', '#ecfccb'], '#65a30d', '#0d9488'],
+  ['Коралл', 'light', ['#fff5f5', '#fed7d7', '#ffe3e3'], '#ef4444', '#f59e0b'],
+  ['Голубика', 'light', ['#eef2ff', '#c7d2fe', '#e0e7ff'], '#4338ca', '#0ea5e9'],
+  ['Карамель', 'light', ['#fffbeb', '#fed7aa', '#fde68a'], '#d97706', '#be123c'],
+  ['Бирюза', 'light', ['#ecfeff', '#a5f3fc', '#cffafe'], '#0891b2', '#7c3aed'],
+  ['Светлая слива', 'light', ['#fdf4ff', '#f5d0fe', '#fae8ff'], '#c026d3', '#4f46e5'],
+  ['Рассвет', 'light', ['#fff1f2', '#fde68a', '#bae6fd'], '#f43f5e', '#0284c7'],
+];
+
+// 40 шрифтов с кириллицей: [название, категория]
+window.FONTS = [
+  ['Roboto', 'sans'], ['Open Sans', 'sans'], ['Montserrat', 'sans'], ['PT Sans', 'sans'],
+  ['PT Serif', 'serif'], ['Noto Sans', 'sans'], ['Noto Serif', 'serif'], ['Ubuntu', 'sans'],
+  ['Lora', 'serif'], ['Merriweather', 'serif'], ['Playfair Display', 'serif'], ['Raleway', 'sans'],
+  ['Nunito', 'sans'], ['Rubik', 'sans'], ['Oswald', 'sans'], ['Comfortaa', 'cursive'],
+  ['Fira Sans', 'sans'], ['Exo 2', 'sans'], ['Philosopher', 'sans'], ['Marck Script', 'cursive'],
+  ['Pacifico', 'cursive'], ['Caveat', 'cursive'], ['Lobster', 'cursive'], ['Russo One', 'sans'],
+  ['Jura', 'sans'], ['Play', 'sans'], ['Cormorant', 'serif'], ['Spectral', 'serif'],
+  ['Alegreya', 'serif'], ['Bad Script', 'cursive'], ['Neucha', 'cursive'], ['Amatic SC', 'cursive'],
+  ['Press Start 2P', 'monospace'], ['Yeseva One', 'serif'], ['El Messiri', 'sans'], ['Scada', 'sans'],
+  ['Kurale', 'serif'], ['Forum', 'serif'], ['Manrope', 'sans'], ['Inter', 'sans'],
+];
