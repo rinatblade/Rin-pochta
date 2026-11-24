@@ -5,7 +5,7 @@
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const KEY = 'rp.v1';
-let S = { parcels: [], theme: 0, font: 'Roboto', keys: { t17: '', aftership: '' } };
+let S = { parcels: [], theme: 0, font: 'Roboto', web: true, keys: { t17: '', aftership: '' } };
 try { Object.assign(S, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
 S.keys = Object.assign({ t17: '', aftership: '' }, S.keys || {});
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} };
@@ -238,6 +238,7 @@ const SERVICES = [
   ['17TRACK', 'https://t.17track.net/ru#nums={n}', '#2563eb', '17', 'Универсальный трекер, объединяет Китай и местные почты'],
   ['Cainiao', 'https://global.cainiao.com/newDetail.htm?mailNoList={n}', '#f97316', 'CN', 'Логистика AliExpress'],
   ['Казпочта', 'https://post.kz/mail/search/track/{n}', '#16a34a', 'KZ', 'Отслеживание внутри Казахстана'],
+  ['MyPoint', 'https://mypoint.kz/tracking', '#f43f5e', 'MP', 'Казахстанский трекинг (номер скопируется — вставьте в поле)'],
   ['AfterShip', 'https://www.aftership.com/track/{n}', '#7c3aed', 'AS', 'Мировой агрегатор'],
   ['Parcels', 'https://parcelsapp.com/ru/tracking/{n}', '#0ea5e9', 'PA', 'Агрегатор: десятки служб сразу'],
   ['Track24', 'https://track24.ru/?code={n}', '#e11d48', 'T24', 'Русскоязычный агрегатор'],
@@ -247,6 +248,72 @@ const SERVICES = [
   ['4PX', 'https://track.4px.com/#/result/0/{n}', '#14b8a6', '4P', 'Китайский перевозчик 4PX'],
   ['YunExpress', 'https://www.yuntrack.com/Track/Detail/{n}', '#6366f1', 'YE', 'Китайский перевозчик YunExpress'],
 ];
+
+/* ================= Скрытый браузер: автоматический опрос сайтов ================= */
+const scrapes = {};
+window.__scrape = (id, payload) => { const r = scrapes[id]; if (!r) return; delete scrapes[id]; r(payload); };
+function scrape(url, n, form) {
+  return new Promise((res) => {
+    if (!(A && A.scrape)) { res(null); return; }
+    const id = uid(); scrapes[id] = res;
+    A.scrape(id, url, n, !!form);
+    setTimeout(() => { if (scrapes[id]) { delete scrapes[id]; res(null); } }, 180000);
+  });
+}
+const DRE = /(\d{1,2}[.\/]\d{1,2}[.\/]\d{4}|\d{4}-\d{2}-\d{2})(?:[ T,]+(\d{1,2}:\d{2}(?::\d{2})?))?/;
+const TRE = /^\d{1,2}:\d{2}(?::\d{2})?$/;
+const JUNK = /cookie|©|copyright|политик|privacy|конфиденц|подпис|войти|регистрац/i;
+function parseTextEvents(text, n) {
+  if (String(text).toUpperCase().indexOf(n) < 0) return [];
+  const lines = String(text).split(/\n+/).map((x) => x.trim()).filter(Boolean);
+  const out = []; const now = Date.now();
+  for (let i = 0; i < lines.length && out.length < 60; i++) {
+    const m = lines[i].match(DRE); if (!m) continue;
+    let time = m[2];
+    const parts = [];
+    const rest = (lines[i].slice(0, m.index) + ' ' + lines[i].slice(m.index + m[0].length)).replace(/\s+/g, ' ').trim();
+    if (rest.length >= 4) parts.push(rest);
+    let j = i + 1;
+    if (!time && j < lines.length && TRE.test(lines[j])) { time = lines[j]; j++; }
+    while (j < lines.length && parts.length < 2 && !DRE.test(lines[j]) && lines[j].length < 200) { parts.push(lines[j]); j++; }
+    const t = parseTime(m[1] + ' ' + (time || '00:00'));
+    const txt = parts.join(', ').trim();
+    if (!t || t < Date.UTC(2020, 0, 1) || t > now + 3600000) continue;
+    if (txt.length < 4 || JUNK.test(txt) || txt.toUpperCase() === n) continue;
+    out.push({ t, text: txt, place: '' });
+  }
+  return out;
+}
+// [id, название, адрес ({n} — номер), заполнять форму, область]
+const WEB = [
+  ['w17', '17TRACK', 'https://t.17track.net/ru#nums={n}', false, 'all'],
+  ['wparcels', 'Parcels', 'https://parcelsapp.com/ru/tracking/{n}', false, 'all'],
+  ['waftership', 'AfterShip (сайт)', 'https://www.aftership.com/track/{n}', false, 'all'],
+  ['wtrack24', 'Track24', 'https://track24.ru/?code={n}', false, 'all'],
+  ['wmypoint', 'MyPoint', 'https://mypoint.kz/tracking', true, 'all'],
+  ['wkazpost', 'Казпочта (сайт)', 'https://post.kz/mail/search/track/{n}', false, 'kz'],
+  ['wcdek', 'CDEK KZ', 'https://www.cdek.kz/ru/tracking?order_id={n}', false, 'kz'],
+  ['wcainiao', 'Cainiao (сайт)', 'https://global.cainiao.com/newDetail.htm?mailNoList={n}', false, 'cn'],
+  ['wyanwen', 'Yanwen', 'https://track.yw56.com.cn/en/querydel?nums={n}', false, 'cn'],
+  ['w4px', '4PX', 'https://track.4px.com/#/result/0/{n}', false, 'cn'],
+  ['wyun', 'YunExpress', 'https://www.yuntrack.com/Track/Detail/{n}', false, 'cn'],
+];
+WEB.forEach(([id, name, tpl, form, scope]) => {
+  PROVIDERS.push({
+    id, name, web: true,
+    applies: (d) => scope === 'all' || (scope === 'kz' ? (d.country === 'KZ' || d.country === '') : d.country !== 'KZ'),
+    async run(n) {
+      const g = await scrape(tpl.replace('{n}', encodeURIComponent(n)), n, form);
+      if (!g) throw new Error('страница недоступна');
+      let d; try { d = JSON.parse(g); } catch (e) { throw new Error('не удалось прочитать'); }
+      let ev = [];
+      (d.json || []).forEach((t) => { const j = parseJson(t); if (j) ev = ev.concat(genericEvents(j)); });
+      if (!ev.length) ev = parseTextEvents(d.text || '', n);
+      if (!ev.length) throw new Error(d.ok ? 'событий не найдено' : 'результата нет на странице');
+      return ev;
+    },
+  });
+});
 
 /* ================= Обновление посылки ================= */
 async function runProvider(prov, n) {
@@ -259,35 +326,45 @@ async function runProvider(prov, n) {
     return { ok: false, msg: String(e.message || e).slice(0, 60), ev: [] };
   }
 }
+function mergeEvents(old, add) {
+  const out = [];
+  const key = (e) => e.text.toLowerCase().replace(/[^a-z0-9а-яё]+/g, '').slice(0, 40);
+  old.concat(add).sort((x, y) => y.t - x.t).forEach((e) => {
+    const k = key(e);
+    if (!out.some((o) => key(o) === k && Math.abs(o.t - e.t) <= 14 * 3600000)) out.push(e);
+  });
+  return out;
+}
+const hasTrack = (p) => p.numbers.some((x) => detect(x.n).kind === 'track');
 async function refreshParcel(p) {
-  p.busy = true; render();
+  if (p.busy) return 0;
+  p.busy = true; p.sources = {};
   const jobs = [];
   p.numbers.forEach((num) => {
     const d = detect(num.n);
     if (d.kind !== 'track') return;
     PROVIDERS.forEach((prov) => {
       if (prov.key && !S.keys[prov.key]) return;
+      if (prov.web && (!S.web || !(A && A.scrape))) return;
       if (prov.applies && !prov.applies(d)) return;
-      jobs.push(runProvider(prov, num.n).then((r) => ({ prov, num: num.n, r })));
+      jobs.push({ prov, num: num.n });
     });
   });
-  const res = await Promise.all(jobs);
+  p.prog = { done: 0, total: jobs.length };
+  jobs.forEach((j) => { p.sources[j.prov.id + '|' + j.num] = { name: j.prov.name, num: j.num, ok: false, pending: true, msg: 'проверяю…' }; });
+  render();
   const before = p.events.length;
-  const all = [];
-  p.sources = {};
-  res.forEach(({ prov, num, r }) => {
-    p.sources[prov.id + '|' + num] = { name: prov.name, num, ok: r.ok, msg: r.msg };
-    r.ev.forEach((e) => all.push({ t: e.t, text: ru(e.text), place: e.place, src: prov.name, num }));
-  });
-  if (all.length || !p.events.length) {
-    const seen = {}; const out = [];
-    all.sort((a, b) => b.t - a.t).forEach((e) => {
-      const k = Math.floor(e.t / 60000) + '|' + e.text.toLowerCase().replace(/\W+/g, '').slice(0, 30);
-      if (!seen[k]) { seen[k] = 1; out.push(e); }
-    });
-    p.events = out;
-  }
-  p.stage = calcStage(p); p.updated = Date.now(); p.busy = false;
+  let all = p.events.slice();
+  await Promise.all(jobs.map((j) => runProvider(j.prov, j.num).then((r) => {
+    p.sources[j.prov.id + '|' + j.num] = { name: j.prov.name, num: j.num, ok: r.ok, msg: r.msg };
+    if (r.ok) {
+      all = mergeEvents(all, r.ev.map((e) => ({ t: e.t, text: ru(e.text), place: e.place, src: j.prov.name, num: j.num })));
+      p.events = all; p.stage = calcStage(p);
+    }
+    p.prog.done++; save(); render();
+  })));
+  p.busy = false; p.prog = null;
+  p.stage = calcStage(p); p.updated = Date.now();
   save(); render();
   return p.events.length - before;
 }
@@ -314,7 +391,13 @@ const I = {
 /* ================= Навигация ================= */
 let R = { name: 'home' };
 const TABS = ['home', 'services', 'settings'];
-function go(name, params) { R = Object.assign({ name }, params || {}); closeSheet(); render(); $('#view').scrollTop = 0; }
+function go(name, params) {
+  R = Object.assign({ name }, params || {}); closeSheet(); render(); $('#view').scrollTop = 0;
+  if (name === 'detail') {
+    const p = S.parcels.find((x) => x.id === R.id);
+    if (p && !p.busy && p.stage !== 6 && hasTrack(p) && (!p.updated || Date.now() - p.updated > 10 * 60000)) setTimeout(() => doRefresh(p), 80);
+  }
+}
 window.__back = function () {
   if (!$('#sheet').hidden) { closeSheet(); return true; }
   if (R.name === 'detail') { go('home'); return true; }
@@ -346,9 +429,12 @@ function renderNav() {
 function render() {
   const fn = { home: vHome, detail: vDetail, services: vServices, settings: vSettings, themes: vThemes, fonts: vFonts }[R.name] || vHome;
   const y = $('#view').scrollTop;
+  const key = R.name + (R.id || '');
+  const same = render.last === key;
+  render.last = key;
   fn();
   renderNav();
-  if (R.keep) { $('#view').scrollTop = y; }
+  if (same || R.keep) { $('#view').scrollTop = y; }
   const fab = document.getElementById('fab');
   if (fab) fab.remove();
   if (R.name === 'home') {
@@ -377,7 +463,7 @@ function vHome() {
     const first = p.numbers[0];
     return '<div class="card tap" data-id="' + p.id + '"><div class="row"><div class="grow"><div class="title">' + esc(p.title || first.n) + '</div><div class="num">' +
       p.numbers.map((x) => esc(x.n)).join(' → ') + '</div></div>' +
-      (p.busy ? '<span class="spin"></span>' : '<span class="chip ' + (st === 6 ? 'ok' : st >= 0 ? 'acc' : '') + '">' + (st >= 0 ? esc(STAGE_FULL[st]) : 'Ждём данные') + '</span>') + '</div>' +
+      (p.busy ? '<span class="chip"><span class="spin"></span> ' + (p.prog ? p.prog.done + '/' + p.prog.total : '') + '</span>' : '<span class="chip ' + (st === 6 ? 'ok' : st >= 0 ? 'acc' : '') + '">' + (st >= 0 ? esc(STAGE_FULL[st]) : 'Ждём данные') + '</span>') + '</div>' +
       (last ? '<div class="last">' + esc(last.text) + '</div><div class="muted" style="margin-top:4px">' + fmt(last.t) + (last.place ? ' · ' + esc(last.place) : '') + '</div>' :
         '<div class="muted" style="margin-top:8px">' + (detect(first.n).kind === 'track' ? 'Событий пока нет. Потяните «обновить».' : esc(detect(first.n).label) + ' — добавьте трек-номер посылки') + '</div>') +
       '<div class="bar"><i style="width:' + ((st + 1) / 7 * 100) + '%"></i></div></div>';
@@ -397,6 +483,7 @@ function vDetail() {
     (st >= 0 ? esc(STAGE_FULL[st]) : 'Ожидаем данные') + '</div></div></div>' + stageBar(st) +
     '<div class="bar"><i style="width:' + ((st + 1) / 7 * 100) + '%"></i></div></div>';
 
+  if (p.busy && p.prog) h += '<div class="card"><div class="row"><span class="spin"></span><div class="grow"><b>Проверяю источники</b> <span class="muted">' + p.prog.done + ' из ' + p.prog.total + '</span></div></div><div class="bar"><i style="width:' + (p.prog.total ? p.prog.done / p.prog.total * 100 : 0) + '%"></i></div></div>';
   h += '<h2>Номера посылки</h2><div class="card">' + p.numbers.map((x, i) => {
     const d = detect(x.n);
     return '<div class="row" style="padding:6px 0"><div class="grow"><div class="title">' + esc(x.n) + '</div><div class="muted">' + esc(d.label) + '</div></div>' +
@@ -415,22 +502,27 @@ function vDetail() {
 
   const srcs = Object.values(p.sources || {});
   if (srcs.length) {
-    h += '<h2>Источники</h2><div class="card">' + srcs.map((s) => '<div class="row" style="padding:4px 0"><div class="grow">' + esc(s.name) + ' <span class="muted">' + esc(s.num) + '</span></div><span class="chip ' + (s.ok ? 'ok' : 'bad') + '">' + (s.ok ? '✓ ' : '✕ ') + esc(s.msg) + '</span></div>').join('') +
+    h += '<h2>Источники</h2><div class="card">' + srcs.map((s) => '<div class="row" style="padding:4px 0"><div class="grow">' + esc(s.name) + (p.numbers.length > 1 ? ' <span class="muted">' + esc(s.num.slice(0, 6)) + '…</span>' : '') + '</div>' + (s.pending ? '<span class="chip"><span class="spin"></span> проверяю</span>' : '<span class="chip ' + (s.ok ? 'ok' : 'bad') + '">' + (s.ok ? '✓ ' : '✕ ') + esc(s.msg) + '</span>') + '</div>').join('') +
       '<div class="hint" style="margin-top:8px">Если источники не отвечают — проверьте номер на сайтах кнопкой ниже или добавьте API-ключ в настройках.</div></div>';
   }
 
+  const srcNames = Array.from(new Set(p.events.map((e) => e.src)));
+  if (R.sf && !srcNames.includes(R.sf)) R.sf = null;
+  const evs = R.sf ? p.events.filter((e) => e.src === R.sf) : p.events;
   h += '<h2>Маршрут</h2>';
+  if (srcNames.length > 1) h += '<div class="btns" style="margin:0 0 10px"><button class="chip ' + (!R.sf ? 'acc' : '') + '" data-sf="">Все · ' + p.events.length + '</button>' + srcNames.map((n) => '<button class="chip ' + (R.sf === n ? 'acc' : '') + '" data-sf="' + esc(n) + '">' + esc(n) + ' · ' + p.events.filter((e) => e.src === n).length + '</button>').join('') + '</div>';
   if (p.events.length) {
-    h += '<div class="card"><div class="tl">' + p.events.map((e) => '<div class="ev"><div class="t">' + fmt(e.t) + '</div><div class="x">' + esc(e.text) + '</div>' + (e.place ? '<div class="p">' + esc(e.place) + '</div>' : '') + '<span class="s">' + esc(e.src) + '</span></div>').join('') + '</div></div>';
+    h += '<div class="card"><div class="tl">' + evs.map((e) => '<div class="ev"><div class="t">' + fmt(e.t) + '</div><div class="x">' + esc(e.text) + '</div>' + (e.place ? '<div class="p">' + esc(e.place) + '</div>' : '') + '<span class="s">' + esc(e.src) + '</span></div>').join('') + '</div></div>';
   } else {
     h += '<div class="card"><div class="hint">Данных пока нет. Новые посылки появляются в системах через несколько часов после отправки. Нажмите «обновить» позже или откройте номер на сайтах сервисов.</div></div>';
   }
-  h += '<div class="btns"><button class="btn" id="chk">Проверить на сайтах</button><button class="btn ghost" id="shr">Поделиться</button><button class="btn danger" id="del">Удалить</button></div>';
+  h += '<div class="btns"><button class="btn" id="chk">Открыть вручную</button><button class="btn ghost" id="shr">Поделиться</button><button class="btn danger" id="del">Удалить</button></div>';
   v.innerHTML = h;
 
   v.querySelectorAll('[data-copy]').forEach((b) => (b.onclick = () => { if (A) A.copy(b.dataset.copy); toast('Номер скопирован'); }));
+  v.querySelectorAll('[data-sf]').forEach((b) => (b.onclick = () => { R.sf = b.dataset.sf || null; render(); }));
   v.querySelectorAll('[data-rm]').forEach((b) => (b.onclick = () => { p.numbers.splice(+b.dataset.rm, 1); p.events = []; save(); doRefresh(p); }));
-  v.querySelectorAll('[data-open="ali"]').forEach((b) => (b.onclick = () => openUrl('AliExpress', SERVICES[7][1].replace('{n}', encodeURIComponent(b.dataset.n)))));
+  v.querySelectorAll('[data-open="ali"]').forEach((b) => (b.onclick = () => openUrl('AliExpress', SERVICES.find((x) => x[0] === 'AliExpress')[1].replace('{n}', encodeURIComponent(b.dataset.n)))));
   v.querySelectorAll('[data-app]').forEach((b) => (b.onclick = () => { if (!(A && A.openApp && A.openApp(b.dataset.app))) toast('Приложение не установлено'); }));
   $('#addn').onclick = () => addNumberSheet(p);
   $('#ren').onclick = () => renameSheet(p);
@@ -454,7 +546,7 @@ function checkSheet(p) {
     h += '<label class="l">' + esc(x.n) + '</label><div class="btns" style="margin-top:0">' + SERVICES.map((s, j) => '<button class="btn ghost sm" data-i="' + i + '" data-j="' + j + '">' + esc(s[0]) + '</button>').join('') + '</div>';
   });
   openSheet(h, (sh) => sh.querySelectorAll('[data-i]').forEach((b) => (b.onclick = () => {
-    const s = SERVICES[+b.dataset.j]; closeSheet(); openUrl(s[0], s[1].replace('{n}', encodeURIComponent(nums[+b.dataset.i].n)));
+    const s = SERVICES[+b.dataset.j]; const nn = nums[+b.dataset.i].n; closeSheet(); if (s[1].indexOf('{n}') < 0 && A) { A.copy(nn); toast('Номер скопирован — вставьте в поле'); } openUrl(s[0], s[1].replace('{n}', encodeURIComponent(nn)));
   })));
 }
 
@@ -467,7 +559,7 @@ function vServices() {
   $('#sp').onclick = () => { if (A) { $('#sn').value = A.paste().trim(); } };
   v.querySelectorAll('.svc').forEach((c) => (c.onclick = () => {
     const n = norm($('#sn').value); if (!n) { toast('Введите номер'); return; }
-    const s = SERVICES[+c.dataset.i]; openUrl(s[0], s[1].replace('{n}', encodeURIComponent(n)));
+    const s = SERVICES[+c.dataset.i]; if (s[1].indexOf('{n}') < 0 && A) { A.copy(n); toast('Номер скопирован — вставьте в поле'); } openUrl(s[0], s[1].replace('{n}', encodeURIComponent(n)));
   }));
   v.querySelectorAll('[data-app]').forEach((b) => (b.onclick = () => { if (!(A && A.openApp && A.openApp(b.dataset.app))) toast('Приложение не установлено'); }));
 }
@@ -479,11 +571,13 @@ function vSettings() {
   v.innerHTML = '<h2>Оформление</h2>' +
     '<div class="card tap row" id="gt"><div class="sw" style="width:46px;height:46px;aspect-ratio:auto;background:linear-gradient(160deg,' + t[2].join(',') + ')"><i style="background:' + t[3] + '"></i></div><div class="grow"><div class="title">Тема: ' + esc(t[0]) + '</div><div class="muted">40 тем · ' + (t[1] === 'dark' ? 'тёмная' : 'светлая') + '</div></div><span class="muted">›</span></div>' +
     '<div class="card tap row" id="gf"><div class="grow"><div class="title" style="font-size:20px">Шрифт: ' + esc(S.font) + '</div><div class="muted">40 русских шрифтов</div></div><span class="muted">›</span></div>' +
+    '<h2>Автопроверка</h2><div class="card"><div class="row"><div class="grow"><div class="title">Опрос сайтов автоматически</div><div class="muted">Скрытый браузер сам открывает 11 сервисов, включая MyPoint, и забирает маршрут</div></div><button class="btn sm ' + (S.web ? '' : 'ghost') + '" id="wb">' + (S.web ? 'Вкл' : 'Выкл') + '</button></div></div>' +
     '<h2>Ключи API (необязательно)</h2><div class="card"><div class="hint">С ключами подключаются сервисы <b>17TRACK</b> и <b>AfterShip</b> — данные становятся полнее и достовернее. Ключ хранится только на вашем телефоне.</div>' +
     '<label class="l">17TRACK API-ключ (api.17track.net)</label><input type="password" id="k1" value="' + esc(S.keys.t17) + '" placeholder="не задан" autocomplete="off">' +
     '<label class="l">AfterShip API-ключ (aftership.com)</label><input type="password" id="k2" value="' + esc(S.keys.aftership) + '" placeholder="не задан" autocomplete="off"></div>' +
     '<h2>Данные</h2><div class="card"><button class="btn danger block" id="clr">Удалить все посылки</button></div>' +
     '<div class="muted" style="text-align:center;margin-top:14px">Rin-pochta ' + '1.0 · Китай → Казахстан</div>';
+  $('#wb').onclick = () => { S.web = !S.web; save(); R.keep = true; render(); R.keep = false; };
   $('#gt').onclick = () => go('themes'); $('#gf').onclick = () => go('fonts');
   $('#k1').onchange = (e) => { S.keys.t17 = e.target.value.trim(); save(); toast('Ключ сохранён'); };
   $('#k2').onchange = (e) => { S.keys.aftership = e.target.value.trim(); save(); toast('Ключ сохранён'); };
@@ -526,7 +620,7 @@ function addSheet() {
         const ex = S.parcels.find((p) => p.numbers.some((x) => x.n === n));
         if (ex) { go('detail', { id: ex.id }); toast('Такая посылка уже есть'); return; }
         const p = { id: uid(), title: $('#at').value.trim(), numbers: [{ n }], events: [], sources: {}, created: Date.now(), stage: -1 };
-        S.parcels.unshift(p); save(); go('detail', { id: p.id }); doRefresh(p);
+        S.parcels.unshift(p); save(); go('detail', { id: p.id });
       };
     });
 }
@@ -554,6 +648,7 @@ function renameSheet(p) {
 
 /* ================= Обновление ================= */
 async function doRefresh(p) {
+  if (p.busy) { toast('Проверка уже идёт'); return; }
   const d = await refreshParcel(p);
   if (!p.events.length) {
     const hasTrack = p.numbers.some((x) => detect(x.n).kind === 'track');
@@ -570,11 +665,11 @@ async function refreshAll() {
 }
 
 /* ================= Старт ================= */
-S.parcels.forEach((p) => { p.busy = false; });
+S.parcels.forEach((p) => { p.busy = false; p.prog = null; });
 applyTheme(); applyFont(); render();
 setTimeout(() => {
   S.parcels.filter((p) => p.stage !== 6 && (!p.updated || Date.now() - p.updated > 30 * 60000) && p.numbers.some((x) => detect(x.n).kind === 'track'))
     .reduce((pr, p) => pr.then(() => refreshParcel(p).catch(() => {})), Promise.resolve());
 }, 800);
-window.__rp = { S, detect, classify, genericEvents, parseTime, calcStage, refreshParcel, go };
+window.__rp = { parseTextEvents, mergeEvents, S, detect, classify, genericEvents, parseTime, calcStage, refreshParcel, go };
 })();

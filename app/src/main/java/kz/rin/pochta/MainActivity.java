@@ -9,10 +9,14 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.JsResult;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -23,6 +27,7 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
@@ -30,6 +35,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayDeque;
 import java.util.Iterator;
 
 public class MainActivity extends Activity {
@@ -176,9 +182,186 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        scrapeQueue.clear();
+        ui.removeCallbacksAndMessages(null);
         if (web != null) web.destroy();
         if (ext != null) ext.destroy();
         super.onDestroy();
+    }
+
+    /* ===== Автоматический опрос сайтов скрытыми браузерами ===== */
+
+    private static final int MAX_PARALLEL = 4;
+    private static final int MAX_TICKS = 18;      // ~27 секунд на сайт
+    private final ArrayDeque<String[]> scrapeQueue = new ArrayDeque<>();
+    private int scrapeRunning = 0;
+    private final Handler ui = new Handler(Looper.getMainLooper());
+
+    /** Перехватывает JSON-ответы (fetch/XHR), которые страница получает сама. */
+    private static final String HOOK_JS = """
+(function(){
+  if(window.__rpHook)return; window.__rpHook=1; window.__rpCap=[];
+  function keep(t){try{if(t&&t.length<100000){var c=t.trim().charAt(0);if(c==='{'||c==='['){window.__rpCap.push(t);if(window.__rpCap.length>40)window.__rpCap.shift();}}}catch(e){}}
+  var of=window.fetch;
+  if(of){window.fetch=function(){var p=of.apply(this,arguments);try{p.then(function(r){try{r.clone().text().then(keep);}catch(e){}}).catch(function(){});}catch(e){}return p;};}
+  var oo=XMLHttpRequest.prototype.open;
+  XMLHttpRequest.prototype.open=function(){this.addEventListener('load',function(){try{keep(this.responseText);}catch(e){}});return oo.apply(this,arguments);};
+})();
+""";
+
+    /** Забирает текст страницы и пойманные JSON, проверяет, что результат уже появился. */
+    private static final String GRAB_JS = """
+(function(n){
+  var t=document.body?document.body.innerText:'';
+  var tu=t.toUpperCase();
+  var re=new RegExp('[0-9]{1,2}[./][0-9]{1,2}[./][0-9]{4}|[0-9]{4}-[0-9]{2}-[0-9]{2}');
+  var caps=(window.__rpCap||[]).filter(function(c){return c.toUpperCase().indexOf(n)>=0;}).slice(-8);
+  var ok=(re.test(t)&&tu.indexOf(n)>=0)||caps.length>0;
+  return JSON.stringify({text:t.slice(0,40000),json:caps,ok:ok,url:location.href});
+})(__N__)
+""";
+
+    /** Вставляет номер в поле на странице и нажимает кнопку поиска. */
+    private static final String FILL_JS = """
+(function(n){
+  function vis(e){var r=e.getBoundingClientRect();var s=getComputedStyle(e);return r.width>20&&r.height>10&&s.visibility!=='hidden'&&s.display!=='none';}
+  var bad=['hidden','checkbox','radio','submit','button','file','password','email','tel','image','range','color','date'];
+  var inputs=[].slice.call(document.querySelectorAll('input,textarea')).filter(function(i){var t=(i.type||'text').toLowerCase();return bad.indexOf(t)<0&&!i.disabled&&!i.readOnly&&vis(i);});
+  if(!inputs.length)return '0';
+  var inp=inputs[0];
+  inp.focus();
+  var proto=inp.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(proto,'value').set.call(inp,n);
+  inp.dispatchEvent(new Event('input',{bubbles:true}));
+  inp.dispatchEvent(new Event('change',{bubbles:true}));
+  var scope=inp.form||inp.closest('form')||(inp.parentElement&&inp.parentElement.parentElement)||document;
+  var btns=[].slice.call(scope.querySelectorAll('button,input[type=submit],[role=button],a.btn,.btn')).filter(vis);
+  if(!btns.length)btns=[].slice.call(document.querySelectorAll('button,input[type=submit],[role=button]')).filter(vis);
+  var re=/отслед|найти|поиск|track|search|проверить|узнать|искать|find/i;
+  var btn=btns.filter(function(b){return re.test((b.innerText||b.value||b.getAttribute('aria-label')||'')+'');})[0]||btns[0];
+  setTimeout(function(){
+    if(btn){btn.click();}
+    ['keydown','keypress','keyup'].forEach(function(t){inp.dispatchEvent(new KeyboardEvent(t,{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));});
+    if(inp.form&&inp.form.requestSubmit){try{inp.form.requestSubmit();}catch(e){}}
+  },400);
+  return '1';
+})(__N__)
+""";
+
+    private int dp(int v) {
+        return (int) (v * getResources().getDisplayMetrics().density);
+    }
+
+    private static String unquote(String value) {
+        if (value == null || value.equals("null")) return "";
+        try {
+            return new JSONArray("[" + value + "]").getString(0);
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    private void enqueueScrape(String id, String url, String number, boolean form) {
+        scrapeQueue.add(new String[]{id, url, number, form ? "1" : "0"});
+        pumpScrape();
+    }
+
+    private void pumpScrape() {
+        while (scrapeRunning < MAX_PARALLEL && !scrapeQueue.isEmpty()) {
+            scrapeRunning++;
+            startScrape(scrapeQueue.poll());
+        }
+    }
+
+    private void startScrape(final String[] job) {
+        final String id = job[0];
+        final String url = job[1];
+        final String number = job[2];
+        final boolean form = "1".equals(job[3]);
+
+        final WebView w = new WebView(this);
+        configure(w);
+        try {
+            CookieManager.getInstance().setAcceptThirdPartyCookies(w, true);
+        } catch (Exception ignored) {
+        }
+        w.setTranslationX(-8000);
+        root.addView(w, new FrameLayout.LayoutParams(dp(412), dp(800)));
+        w.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onJsAlert(WebView view, String u, String message, JsResult result) {
+                result.confirm();
+                return true;
+            }
+
+            @Override
+            public boolean onJsConfirm(WebView view, String u, String message, JsResult result) {
+                result.cancel();
+                return true;
+            }
+        });
+        w.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String u, android.graphics.Bitmap icon) {
+                view.evaluateJavascript(HOOK_JS, null);
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String u) {
+                view.evaluateJavascript(HOOK_JS, null);
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                String u = request.getUrl().toString();
+                return !(u.startsWith("http://") || u.startsWith("https://"));
+            }
+        });
+
+        // st: 0 — номер опроса, 1 — сколько раз подряд страница не менялась, 2 — длина прошлого ответа,
+        // 3 — на каком опросе вставили номер, 4 — сколько раз вставляли
+        final int[] st = {0, 0, 0, 0, 0};
+        final boolean[] fin = {false};
+        final Runnable[] loop = new Runnable[1];
+        final String grab = GRAB_JS.replace("__N__", JSONObject.quote(number));
+        final String fill = FILL_JS.replace("__N__", JSONObject.quote(number));
+
+        loop[0] = () -> {
+            if (fin[0]) return;
+            st[0]++;
+            if (form && st[0] >= 2 && st[4] < 3 && (st[3] == 0 || st[0] - st[3] >= 8)) {
+                w.evaluateJavascript(fill, value -> {
+                    if ("\"1\"".equals(value)) {
+                        st[3] = st[0];
+                        st[4]++;
+                    }
+                });
+            }
+            w.evaluateJavascript(grab, value -> {
+                if (fin[0]) return;
+                String payload = unquote(value);
+                boolean ok = payload.contains("\"ok\":true");
+                int len = payload.length();
+                if (ok && len == st[2]) st[1]++;
+                else st[1] = 0;
+                st[2] = len;
+                boolean done = (ok && st[1] >= 2 && st[0] >= 4) || st[0] >= MAX_TICKS;
+                if (done) {
+                    fin[0] = true;
+                    web.evaluateJavascript("window.__scrape(" + JSONObject.quote(id) + ","
+                            + JSONObject.quote(payload) + ")", null);
+                    root.removeView(w);
+                    w.destroy();
+                    scrapeRunning--;
+                    pumpScrape();
+                } else {
+                    ui.postDelayed(loop[0], 1500);
+                }
+            });
+        };
+
+        w.loadUrl(url);
+        ui.postDelayed(loop[0], 2500);
     }
 
     /** Мост JS -> Android. */
@@ -238,6 +421,11 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> web.evaluateJavascript(
                         "window.__http(" + JSONObject.quote(id) + "," + st + "," + JSONObject.quote(tx) + ")", null));
             }).start();
+        }
+
+        @JavascriptInterface
+        public void scrape(final String id, final String url, final String number, final boolean form) {
+            runOnUiThread(() -> enqueueScrape(id, url, number == null ? "" : number.toUpperCase(), form));
         }
 
         @JavascriptInterface
